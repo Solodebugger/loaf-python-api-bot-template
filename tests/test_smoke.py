@@ -71,7 +71,7 @@ def test_error_mapping():
         error_from_response(403, {"error": "x", "code": "NOT_COMPETITION_PARTICIPANT"}),
         loaf.CompetitionEligibilityError,
     )
-    # The admin kill switch is a 403 with no machine code — matched on message.
+    # The emergency kill switch is a 403 with no machine code — matched on message.
     assert isinstance(
         error_from_response(403, {"error": "Trading is currently halted"}),
         loaf.TradingHaltedError,

@@ -83,8 +83,7 @@ typed descriptions of every documented shape.
 ### Endpoint coverage
 
 The trading-facing endpoints are wrapped (account management, KYC, referrals,
-valuations, fiat ramps, admin, webhook, and market-maker routes are not part of
-this SDK):
+valuations, and fiat ramps are not part of this SDK):
 
 ```
 market.properties()                   GET    /trade
@@ -157,7 +156,7 @@ WebSocket channel (see below).
 While a trading-competition round is **ACTIVE**, only accounts admitted to the
 round may place orders — otherwise you get `CompetitionEligibilityError` (check
 your standing with `loaf.competition.queue_position()`). Outside an active
-round trading is unrestricted. If an admin has halted trading platform-wide,
+round trading is unrestricted. If trading is halted platform-wide,
 order placement/cancels raise `TradingHaltedError` (403).
 
 ---
@@ -231,7 +230,7 @@ try:
 except loaf.CompetitionEligibilityError:
     ...   # not admitted to the active competition round
 except loaf.TradingHaltedError:
-    ...   # platform-wide admin halt — back off and retry later
+    ...   # platform-wide trading halt — back off and retry later
 except loaf.LoafValidationError as e:
     print(e.message, e.details)        # 400 field errors
 except loaf.LoafRateLimitError as e:
@@ -245,7 +244,7 @@ except loaf.LoafAPIError as e:
 
 ## Rate limits & retries
 
-The backend allows ~100 requests / 15 min per IP by default and sends standard
+The backend rate limits requests per IP and sends standard
 `RateLimit-*` headers (snapshot at `loaf.last_rate_limit`). Sensitive
 endpoints (orders, offering subscriptions, competition queue/payout) are
 additionally rate limited **per account**, so rotating IPs doesn't raise the
@@ -288,8 +287,7 @@ pagination, error mapping, and retry behaviour.
   home feed (`/home`), fiat on/off-ramps (`/portfolio/onramp|offramp`), and the
   shareable image cards (`/portfolio/position/{id}/pnl-card`,
   `/leaderboard/card`, `/competition/queue-position/card`) are **not** wrapped —
-  do those in the Loaf web app. Admin, webhook, and market-maker routes are
-  likewise excluded.
+  do those in the Loaf web app.
 - Create your API key and find your numeric user id (for the private WebSocket
   channel) in the web app.
 - The default base URL is the **production API** (`https://api.loafmarkets.com/api`).

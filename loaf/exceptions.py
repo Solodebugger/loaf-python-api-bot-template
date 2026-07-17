@@ -10,7 +10,7 @@ Every error the API can return is mapped to a specific exception so a bot can
         ├── LoafAuthError                 401  bad/expired/missing credentials
         ├── LoafForbiddenError            403  generic forbidden
         │   ├── KycRequiredError          403  retail/wholesale KYC required
-        │   ├── TradingHaltedError        403  "Trading is currently halted" (admin kill switch)
+        │   ├── TradingHaltedError        403  "Trading is currently halted" (emergency kill switch)
         │   └── CompetitionEligibilityError 403 code=NOT_COMPETITION_PARTICIPANT
         ├── LoafValidationError           400  body/query/param validation failed
         ├── LoafNotFoundError             404
@@ -89,7 +89,7 @@ class KycRequiredError(LoafForbiddenError):
 
 
 class TradingHaltedError(LoafForbiddenError):
-    """403 "Trading is currently halted" — the admin emergency kill switch is on.
+    """403 "Trading is currently halted" — the platform emergency kill switch is on.
 
     Order placement, cancels, and offering subscriptions all reject while the
     halt lasts. Back off and retry later; there is no client-side fix.

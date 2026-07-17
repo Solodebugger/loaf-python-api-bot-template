@@ -11,7 +11,7 @@ Order placement can be rejected with a 403 when:
   (:class:`~loaf.exceptions.CompetitionEligibilityError` — check
   ``loaf.competition.queue_position()``); outside an active round trading is
   unrestricted, or
-* trading is halted platform-wide by an admin
+* trading is halted platform-wide
   (:class:`~loaf.exceptions.TradingHaltedError`).
 
 These endpoints are also per-account rate limited (429 on abuse), on top of the

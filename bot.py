@@ -180,7 +180,7 @@ class Strategy:
         #
         # During an ACTIVE competition round, order placement requires admission
         # (loaf.CompetitionEligibilityError otherwise; loaf.TradingHaltedError
-        # while an admin halt is on).
+        # while a platform-wide halt is on).
         # Wrap calls in try/except loaf.LoafAPIError to handle rejections.
         # ----------------------------------------------------------------- #
 
