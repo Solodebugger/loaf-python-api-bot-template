@@ -35,6 +35,15 @@ class Candle(TypedDict):
     volume: float  # tokens
 
 
+class CandleHistory(TypedDict, total=False):
+    """Response to ``GET /trade/{token}/candles`` (see ``market.candles``)."""
+
+    resolution: str  # CandleResolution
+    candles: list[Candle]  # oldest -> newest
+    oldestTs: Optional[int]  # pass as `to` to page back; None when empty
+    hasMore: bool  # at least one older candle exists before oldestTs
+
+
 class TradeTick(TypedDict, total=False):
     """A public trade (from a property detail page or the ``trades`` WS channel)."""
 
@@ -117,6 +126,7 @@ class PortfolioComponent(TypedDict, total=False):
     portfolioValue: float
     portfolioPnl: float
     portfolioPnlPercent: float
+    lifetimeVolume: float  # dollars traded over the account's lifetime
     positions: list[Position]
     applicableFees: dict[str, int]  # {takerFeeBps, makerFeeBps}
     offeringOrders: list[dict[str, Any]]
@@ -142,10 +152,26 @@ class LeaderboardEntry(TypedDict, total=False):
     pnl: float  # whole USDC
 
 
+class QueuePosition(TypedDict, total=False):
+    """Response to ``GET /competition/queue-position``.
+
+    ``position`` and ``finalPlacement`` are mutually exclusive; an admitted
+    (currently trading) user has neither.
+    """
+
+    position: Optional[int]  # place in the admission queue, if still queued
+    queueCount: int
+    finalPlacement: Optional[int]  # last round's result, between rounds
+    referralCount: int
+    priorityBoostPlaces: int
+    maxBoostsPerUser: int
+
+
 __all__ = [
     "PriceLevel",
     "OrderBook",
     "Candle",
+    "CandleHistory",
     "TradeTick",
     "OrderResult",
     "OrderNonce",
@@ -156,4 +182,5 @@ __all__ = [
     "PortfolioComponent",
     "IpoSubscribeResult",
     "LeaderboardEntry",
+    "QueuePosition",
 ]

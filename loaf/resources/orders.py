@@ -6,9 +6,16 @@ default, so the common case is a one-liner::
 
     loaf.orders.limit_buy("123main", quantity=10, price=167.49)
 
-Requirements for order placement (otherwise you get a 403):
-* the trading gate is cleared (a referral code redeemed in the web app, or
-  competition admission when a round is active).
+Order placement can be rejected with a 403 when:
+* a trading-competition round is ACTIVE and your account is not admitted
+  (:class:`~loaf.exceptions.CompetitionEligibilityError` — check
+  ``loaf.competition.queue_position()``); outside an active round trading is
+  unrestricted, or
+* trading is halted platform-wide by an admin
+  (:class:`~loaf.exceptions.TradingHaltedError`).
+
+These endpoints are also per-account rate limited (429 on abuse), on top of the
+per-IP limit.
 
 A 200 response means the exchange *accepted* the order into the book — not that
 it filled. Fills and cancellations arrive asynchronously on the private

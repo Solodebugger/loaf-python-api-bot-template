@@ -10,7 +10,7 @@ Every error the API can return is mapped to a specific exception so a bot can
         ├── LoafAuthError                 401  bad/expired/missing credentials
         ├── LoafForbiddenError            403  generic forbidden
         │   ├── KycRequiredError          403  retail/wholesale KYC required
-        │   ├── ReferralRequiredError     403  code=REFERRAL_REQUIRED
+        │   ├── TradingHaltedError        403  "Trading is currently halted" (admin kill switch)
         │   └── CompetitionEligibilityError 403 code=NOT_COMPETITION_PARTICIPANT
         ├── LoafValidationError           400  body/query/param validation failed
         ├── LoafNotFoundError             404
@@ -88,15 +88,21 @@ class KycRequiredError(LoafForbiddenError):
     """403 — retail or wholesale KYC verification is required for this action."""
 
 
-class ReferralRequiredError(LoafForbiddenError):
-    """403 ``REFERRAL_REQUIRED`` — redeem a referral code before trading.
+class TradingHaltedError(LoafForbiddenError):
+    """403 "Trading is currently halted" — the admin emergency kill switch is on.
 
-    Referral codes are redeemed in the Loaf web app.
+    Order placement, cancels, and offering subscriptions all reject while the
+    halt lasts. Back off and retry later; there is no client-side fix.
     """
 
 
 class CompetitionEligibilityError(LoafForbiddenError):
-    """403 ``NOT_COMPETITION_PARTICIPANT`` — not admitted to the active round."""
+    """403 ``NOT_COMPETITION_PARTICIPANT`` — not admitted to the active round.
+
+    Raised on order placement while a competition round is ACTIVE and your
+    account has not been admitted. Check your standing with
+    :meth:`loaf.resources.competition.CompetitionResource.queue_position`.
+    """
 
 
 class LoafValidationError(LoafAPIError):
@@ -177,10 +183,11 @@ def error_from_response(
     if status_code == 401:
         return LoafAuthError(message, **kwargs)
     if status_code == 403:
-        if code == "REFERRAL_REQUIRED":
-            return ReferralRequiredError(message, **kwargs)
         if code == "NOT_COMPETITION_PARTICIPANT":
             return CompetitionEligibilityError(message, **kwargs)
+        # The halt rejection carries no machine code — match on the message.
+        if "halted" in message.lower():
+            return TradingHaltedError(message, **kwargs)
         if "kyc" in message.lower() or "wholesale" in message.lower():
             return KycRequiredError(message, **kwargs)
         return LoafForbiddenError(message, **kwargs)

@@ -20,7 +20,7 @@ Or run it in the background and keep using the REST client::
         ws.subscribe_portfolio()          # uses your authenticated userId
         ...                               # do other work; handlers fire live
 
-Channels (``"type:id"`` strings):
+Channels (``"type:id"`` strings; ``leaderboard`` has no id):
 
 ==================  ========  ===========================================
 Channel             Auth      What you receive
@@ -29,7 +29,9 @@ orderbook:{id}      public    full bid/ask book snapshots
 trades:{id}         public    rolling recent-trades batches
 chart:{id}          public    OHLCV candle updates (note: singular "chart")
 markprice:{id}      public    canonical mark price (1s, on change)
+volume:{id}         public    session volume replacing ``volume24h``
 ipo:{id}            public    primary-market allocation progress
+leaderboard         public    full competition leaderboard on change
 portfolio:{userId}  PRIVATE   your balances/positions/orders/trades deltas
 ==================  ========  ===========================================
 
@@ -154,8 +156,18 @@ class LoafWebSocketClient:
     def on_mark_price(self, handler: Handler | None = None) -> Any:
         return self.on(WSMessageType.MARK_PRICE, handler)
 
+    def on_volume(self, handler: Handler | None = None) -> Any:
+        """A property's session volume changed (``volume_update``:
+        ``{propertyId, volume24h}``). Replaces the REST ``volume24h``."""
+        return self.on(WSMessageType.VOLUME_UPDATE, handler)
+
     def on_ipo(self, handler: Handler | None = None) -> Any:
         return self.on(WSMessageType.IPO_ALLOCATION_UPDATE, handler)
+
+    def on_leaderboard(self, handler: Handler | None = None) -> Any:
+        """The competition leaderboard changed (``leaderboard_update``:
+        ``{leaderboard}`` — the full board, same shape as ``GET /leaderboard``)."""
+        return self.on(WSMessageType.LEADERBOARD_UPDATE, handler)
 
     # private portfolio deltas
     def on_balances(self, handler: Handler | None = None) -> Any:
@@ -173,6 +185,10 @@ class LoafWebSocketClient:
     def on_trade(self, handler: Handler | None = None) -> Any:
         """Your own fills on the private portfolio channel (``trade_new``)."""
         return self.on(WSMessageType.TRADE_NEW, handler)
+
+    def on_lifetime_volume(self, handler: Handler | None = None) -> Any:
+        """Your lifetime traded volume changed (``lifetime_volume_update``)."""
+        return self.on(WSMessageType.LIFETIME_VOLUME_UPDATE, handler)
 
     def on_transfer(self, handler: Handler | None = None) -> Any:
         return self.on(WSMessageType.TRANSFER_UPDATE, handler)
@@ -223,8 +239,17 @@ class LoafWebSocketClient:
     def subscribe_mark_price(self, property_id: int) -> LoafWebSocketClient:
         return self.subscribe(f"markprice:{int(property_id)}")
 
+    def subscribe_volume(self, property_id: int) -> LoafWebSocketClient:
+        """Session-volume pushes for a property (seed from the REST
+        ``volume24h``, then let ``volume_update`` frames replace it)."""
+        return self.subscribe(f"volume:{int(property_id)}")
+
     def subscribe_ipo(self, ipo_id: int) -> LoafWebSocketClient:
         return self.subscribe(f"ipo:{int(ipo_id)}")
+
+    def subscribe_leaderboard(self) -> LoafWebSocketClient:
+        """Live competition-leaderboard updates (no id — one global channel)."""
+        return self.subscribe("leaderboard")
 
     def subscribe_portfolio(self, user_id: int) -> LoafWebSocketClient:
         """Subscribe to your PRIVATE portfolio channel.

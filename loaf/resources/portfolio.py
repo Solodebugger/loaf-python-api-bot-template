@@ -26,9 +26,10 @@ class PortfolioResource(Resource):
         """``GET /portfolio/component`` — the assembled portfolio.
 
         Returns ``cash``, ``frozen``, ``portfolioValue``, ``portfolioPnl``,
-        ``portfolioPnlPercent``, ``positions`` (per-property quantity / avg entry
-        / market price / PnL), ``applicableFees`` (raw bps), and recent
-        ``offeringOrders`` / ``openOrders`` / ``tradeHistory`` / ``orderHistory``
-        / ``transfers``.
+        ``portfolioPnlPercent``, ``lifetimeVolume``, ``positions`` (per-property
+        quantity / avg entry / market price / PnL), ``applicableFees`` (raw
+        bps), and recent ``offeringOrders`` / ``openOrders`` / ``tradeHistory``
+        / ``orderHistory`` / ``transfers``. ``lifetimeVolume`` also streams on
+        the private WS channel as ``lifetime_volume_update``.
         """
         return self._client.get("/portfolio/component")

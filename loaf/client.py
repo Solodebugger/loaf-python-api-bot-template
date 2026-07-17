@@ -27,6 +27,7 @@ from .exceptions import (
 )
 
 if TYPE_CHECKING:
+    from .resources.competition import CompetitionResource
     from .resources.history import HistoryResource
     from .resources.leaderboard import LeaderboardResource
     from .resources.market import MarketResource
@@ -102,6 +103,7 @@ class LoafClient:
         self._owns_http = http_client is None
 
         # Lazily import to avoid an import cycle at module load.
+        from .resources.competition import CompetitionResource
         from .resources.history import HistoryResource
         from .resources.leaderboard import LeaderboardResource
         from .resources.market import MarketResource
@@ -109,7 +111,7 @@ class LoafClient:
         from .resources.orders import OrdersResource
         from .resources.portfolio import PortfolioResource
 
-        #: Public market data: properties, info, news.
+        #: Public market data: properties, candles, info pages.
         self.market: MarketResource = MarketResource(self)
         #: Primary market (IPO offerings): list, detail, subscribe, approve.
         self.offerings: OfferingsResource = OfferingsResource(self)
@@ -121,6 +123,8 @@ class LoafClient:
         self.history: HistoryResource = HistoryResource(self)
         #: Competition leaderboard.
         self.leaderboard: LeaderboardResource = LeaderboardResource(self)
+        #: Trading competition: rounds info, queue position, payout details.
+        self.competition: CompetitionResource = CompetitionResource(self)
 
     # ------------------------------------------------------------------ #
     # Public convenience verbs (return parsed bodies)

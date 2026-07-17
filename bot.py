@@ -84,8 +84,9 @@ def preflight(client: LoafClient) -> None:
             print(f"    {p.tokenName}: {p.quantity} @ avg {p.averageEntryPrice} "
                   f"(mkt {p.marketPrice}, PnL {p.propertyPnl})")
     print(
-        "  Note: placing orders needs a cleared trading gate\n"
-        "        (set up in the Loaf web app). You'll get a clear error if not."
+        "  Note: while a competition round is ACTIVE, placing orders requires\n"
+        "        admission to the round (loaf.competition.queue_position() shows\n"
+        "        your standing). You'll get a clear error if not eligible."
     )
 
 
@@ -177,7 +178,9 @@ class Strategy:
         #   # Flatten everything:
         #   self.client.orders.cancel_all()
         #
-        # Order placement requires a cleared trading gate.
+        # During an ACTIVE competition round, order placement requires admission
+        # (loaf.CompetitionEligibilityError otherwise; loaf.TradingHaltedError
+        # while an admin halt is on).
         # Wrap calls in try/except loaf.LoafAPIError to handle rejections.
         # ----------------------------------------------------------------- #
 

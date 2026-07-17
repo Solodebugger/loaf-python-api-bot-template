@@ -68,8 +68,13 @@ def test_derive_ws_url():
 def test_error_mapping():
     assert isinstance(error_from_response(401, {"error": "no"}), loaf.LoafAuthError)
     assert isinstance(
-        error_from_response(403, {"error": "x", "code": "REFERRAL_REQUIRED"}),
-        loaf.ReferralRequiredError,
+        error_from_response(403, {"error": "x", "code": "NOT_COMPETITION_PARTICIPANT"}),
+        loaf.CompetitionEligibilityError,
+    )
+    # The admin kill switch is a 403 with no machine code — matched on message.
+    assert isinstance(
+        error_from_response(403, {"error": "Trading is currently halted"}),
+        loaf.TradingHaltedError,
     )
     assert isinstance(
         error_from_response(403, {"error": "KYC verification required"}), loaf.KycRequiredError
@@ -230,11 +235,86 @@ def test_non_finite_price_quantity_rejected():
 
 def test_error_surfaces_after_retries_exhausted():
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(403, json={"error": "x", "code": "REFERRAL_REQUIRED"})
+        return httpx.Response(403, json={"error": "x", "code": "NOT_COMPETITION_PARTICIPANT"})
 
     client = make_client(handler)
-    with pytest.raises(loaf.ReferralRequiredError):
+    with pytest.raises(loaf.CompetitionEligibilityError):
         client.orders.cancel(1)
+
+
+def test_candles_params_and_no_auth():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["path"] = request.url.path
+        seen["params"] = dict(request.url.params)
+        seen["auth"] = request.headers.get("authorization")
+        return httpx.Response(
+            200,
+            json={"resolution": "1h", "candles": [], "oldestTs": None, "hasMore": False},
+        )
+
+    client = make_client(handler)
+    res = client.market.candles("123main", "1h", count_back=24)
+    assert seen["path"].endswith("/trade/123main/candles")
+    assert seen["params"] == {"resolution": "1h", "countBack": "24"}  # `to` omitted
+    assert seen["auth"] is None  # public endpoint
+    assert res.hasMore is False
+
+    client.market.candles("123main", loaf.CandleResolution.ONE_DAY, to=1_700_000_000)
+    assert seen["params"] == {"resolution": "1d", "to": "1700000000"}
+
+
+def test_iter_candles_pages_backwards():
+    pages = {
+        # First call: no `to` -> newest page; then page back from oldestTs=100.
+        None: {"resolution": "1m", "candles": [{"time": 100}, {"time": 160}], "oldestTs": 100, "hasMore": True},
+        "100": {"resolution": "1m", "candles": [{"time": 40}], "oldestTs": 40, "hasMore": False},
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=pages[request.url.params.get("to")])
+
+    client = make_client(handler)
+    times = [c.time for c in client.market.iter_candles("x", "1m")]
+    assert times == [160, 100, 40]  # newest -> oldest across pages
+
+
+def test_competition_endpoints():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["path"] = request.url.path
+        seen["auth"] = request.headers.get("authorization")
+        if request.content:
+            seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"ok": True})
+
+    client = make_client(handler)
+
+    client.competition.info()
+    assert seen["path"].endswith("/competition") and seen["auth"] is None
+
+    client.competition.queue_position()
+    assert seen["path"].endswith("/competition/queue-position")
+    assert seen["auth"] == "Bearer testkey"
+
+    client.competition.submit_payout_details(email="win@example.com")
+    assert seen["path"].endswith("/competition/payout-details")
+    assert seen["body"] == {"email": "win@example.com"}  # None wallet dropped
+
+    # Exactly one destination is enforced locally.
+    with pytest.raises(loaf.LoafValidationError):
+        client.competition.submit_payout_details()
+    with pytest.raises(loaf.LoafValidationError):
+        client.competition.submit_payout_details(wallet_address="0xabc", email="a@b.c")
+
+
+def test_ws_new_channel_helpers():
+    ws = loaf.LoafWebSocketClient(ws_url="ws://test/ws")
+    ws.subscribe_volume(7)
+    ws.subscribe_leaderboard()
+    assert ws._channels == {"volume:7", "leaderboard"}
 
 
 def test_rate_limit_headers_recorded():

@@ -5,8 +5,9 @@ the book rather than filling. Review it before running against a live account.
 
     python examples/03_place_order.py
 
-Requires: a cleared trading gate on your account (redeemed referral, or
-competition admission when a round is active).
+Requires: competition admission when a round is ACTIVE (check
+`client.competition.queue_position()`); outside an active round trading is
+unrestricted.
 """
 
 from __future__ import annotations
@@ -41,8 +42,13 @@ def main() -> None:
     try:
         # create() fetches a nonce for you automatically.
         result = client.orders.limit_buy(prop.propertyId, quantity=1, price=price)
-    except loaf.ReferralRequiredError:
-        raise SystemExit("Trading is gated — redeem a referral code in the Loaf web app first.")
+    except loaf.CompetitionEligibilityError:
+        raise SystemExit(
+            "Not admitted to the active competition round — check "
+            "client.competition.queue_position() for your place in the queue."
+        )
+    except loaf.TradingHaltedError:
+        raise SystemExit("Trading is currently halted platform-wide. Try again later.")
     except loaf.LoafValidationError as exc:
         raise SystemExit(f"Rejected: {exc.message} {exc.details}")
 

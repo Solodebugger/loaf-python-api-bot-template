@@ -37,12 +37,13 @@ def main() -> None:
         best_ask = book.asks[0] if book.get("asks") else None
         print(f"  best bid: {best_bid}")
         print(f"  best ask: {best_ask}")
-    candles = detail.get("candlesticks") or []
-    print(f"  {len(candles)} candles; latest: {candles[-1] if candles else 'n/a'}")
 
-    print("\n--- latest news ---")
-    for article in (client.market.news() or [])[:3]:
-        print(f"  {article.title}")
+    # Chart history lives on its own endpoint (the detail response has none).
+    print(f"\n--- last 24 hourly candles for {token} ---")
+    history = client.market.candles(token, "1h", count_back=24)
+    candles = history.get("candles") or []
+    print(f"  {len(candles)} candles (hasMore={history.hasMore}); "
+          f"latest: {candles[-1] if candles else 'n/a'}")
 
     client.close()
 

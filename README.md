@@ -67,12 +67,13 @@ Create one `LoafClient` and reach everything through grouped resources:
 
 | Resource | What it covers |
 | --- | --- |
-| `loaf.market` | properties, property detail, info pages, news (all public) |
+| `loaf.market` | properties, property detail, candle history, info pages (all public) |
 | `loaf.offerings` | IPO offerings: list, detail, subscribe, pre-approve |
 | `loaf.orders` | nonce, place / cancel / cancel-all orders, pre-approve |
 | `loaf.portfolio` | balances, positions, PnL |
 | `loaf.history` | paginated order & trade history, cancelled & active orders |
 | `loaf.leaderboard` | competition leaderboard |
+| `loaf.competition` | competition rounds info, your queue position, payout details |
 
 Responses are `LoafObject`s — dicts that also allow attribute access, so
 `book.bids[0].price` and `book["bids"][0]["price"]` are equivalent. Unknown
@@ -88,10 +89,11 @@ this SDK):
 ```
 market.properties()                   GET    /trade
 market.property(token)                GET    /trade/{token}
+market.candles(token, resolution)     GET    /trade/{token}/candles
+market.iter_candles(token, res)       (auto-paginate candle history)
 market.info_header(token)             GET    /info/{token}/header
 market.info_overview(token)           GET    /info/{token}/overview
 market.info_documents(token)          GET    /info/{token}/documents
-market.news()                         GET    /news
 
 offerings.list()                      GET    /offerings
 offerings.get(token)                  GET    /offerings/{token}
@@ -112,6 +114,19 @@ history.active_orders()               GET    /history/orders/active
 history.iter_orders() / iter_trades() (auto-paginate via cursor)
 
 leaderboard.get()                     GET    /leaderboard
+
+competition.info()                    GET    /competition
+competition.queue_position()          GET    /competition/queue-position
+competition.submit_payout_details()   POST   /competition/payout-details
+```
+
+Candle history is a dedicated, paginated endpoint (the property detail response
+no longer inlines it):
+
+```python
+h = loaf.market.candles("123main", "1h", count_back=200)   # 1m|5m|15m|1h|4h|1d|1w
+print(h.candles[-1])                  # latest {time, open, high, low, close, volume}
+older = loaf.market.candles("123main", "1h", to=h.oldestTs)  # page back while h.hasMore
 ```
 
 ---
@@ -139,11 +154,11 @@ loaf.orders.cancel_all()      # flatten everything
 Fills and cancellations arrive asynchronously on your private `portfolio`
 WebSocket channel (see below).
 
-To place orders the account needs the **trading gate** cleared (set up in the
-Loaf **web app**) — a redeemed referral code, or competition admission when a
-round is active.
-
-Otherwise you get `ReferralRequiredError` / `CompetitionEligibilityError`.
+While a trading-competition round is **ACTIVE**, only accounts admitted to the
+round may place orders — otherwise you get `CompetitionEligibilityError` (check
+your standing with `loaf.competition.queue_position()`). Outside an active
+round trading is unrestricted. If an admin has halted trading platform-wide,
+order placement/cancels raise `TradingHaltedError` (403).
 
 ---
 
@@ -190,8 +205,10 @@ Channels:
 | `trades:{propertyId}` | public | `on_trades` | rolling recent-trades batch |
 | `chart:{propertyId}` | public | `on_candle` | OHLCV candle updates |
 | `markprice:{propertyId}` | public | `on_mark_price` | canonical mark price (1s, on change) |
+| `volume:{propertyId}` | public | `on_volume` | session volume (replaces `volume24h`) |
 | `ipo:{ipoId}` | public | `on_ipo` | primary-market allocation progress |
-| `portfolio:{userId}` | **private** | `on_balances`, `on_position`, `on_order_status`, `on_order_update`, `on_trade`, `on_transfer`, `on_offering_order` | your account deltas |
+| `leaderboard` | public | `on_leaderboard` | full competition leaderboard, on change |
+| `portfolio:{userId}` | **private** | `on_balances`, `on_position`, `on_order_status`, `on_order_update`, `on_trade`, `on_lifetime_volume`, `on_transfer`, `on_offering_order` | your account deltas |
 
 The private channel requires authentication and a `user_id` matching your
 account (find your numeric id in the Loaf web app). It is a **delta stream** —
@@ -211,8 +228,10 @@ import loaf, time
 
 try:
     loaf.orders.limit_buy(prop_id, quantity=1, price=167.49)
-except loaf.ReferralRequiredError:
-    ...   # redeem a referral code in the web app
+except loaf.CompetitionEligibilityError:
+    ...   # not admitted to the active competition round
+except loaf.TradingHaltedError:
+    ...   # platform-wide admin halt — back off and retry later
 except loaf.LoafValidationError as e:
     print(e.message, e.details)        # 400 field errors
 except loaf.LoafRateLimitError as e:
@@ -227,7 +246,10 @@ except loaf.LoafAPIError as e:
 ## Rate limits & retries
 
 The backend allows ~100 requests / 15 min per IP by default and sends standard
-`RateLimit-*` headers (snapshot at `loaf.last_rate_limit`). The client
+`RateLimit-*` headers (snapshot at `loaf.last_rate_limit`). Sensitive
+endpoints (orders, offering subscriptions, competition queue/payout) are
+additionally rate limited **per account**, so rotating IPs doesn't raise the
+ceiling. The client
 automatically retries transient failures (429, 503, network errors) on
 idempotent (read) requests, with backoff that honours `RateLimit-Reset` /
 `Retry-After`. Non-idempotent calls (e.g. placing an order) are never
@@ -242,7 +264,7 @@ re-issue it with a fresh nonce rather than risk reusing a stale one. Tune with
 | File | Shows |
 | --- | --- |
 | `examples/01_quickstart.py` | confirm credentials, read balances + market |
-| `examples/02_market_data.py` | properties, order book, candles, news (public) |
+| `examples/02_market_data.py` | properties, order book, candle history (public) |
 | `examples/03_place_order.py` | place → inspect → cancel a limit order |
 | `examples/04_realtime_market.py` | stream order book + trades + mark price |
 | `examples/05_portfolio_stream.py` | stream your private portfolio events (needs `LOAF_USER_ID`) |
@@ -263,11 +285,13 @@ pagination, error mapping, and retry behaviour.
 
 - This SDK is the **trading-facing** surface. Account management, KYC, referrals
   (`/auth/*`), property valuations (`/valuations/*`), the featured-offering
-  home feed (`/home`), and fiat on/off-ramps (`/portfolio/onramp|offramp`) are
-  **not** wrapped — do those in the Loaf web app. Admin, webhook, and
-  market-maker routes are likewise excluded.
-- Create your API key, redeem a referral code, and find your numeric user id
-  (for the private WebSocket channel) in the web app.
+  home feed (`/home`), fiat on/off-ramps (`/portfolio/onramp|offramp`), and the
+  shareable image cards (`/portfolio/position/{id}/pnl-card`,
+  `/leaderboard/card`, `/competition/queue-position/card`) are **not** wrapped —
+  do those in the Loaf web app. Admin, webhook, and market-maker routes are
+  likewise excluded.
+- Create your API key and find your numeric user id (for the private WebSocket
+  channel) in the web app.
 - The default base URL is the **production API** (`https://api.loafmarkets.com/api`).
   For local dev, set `LOAF_API_BASE_URL` to your dev server (e.g.
   `http://localhost:8005/api`). For a local server using a self-signed cert, pass

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "loaf-bot"
-version = "0.1.0"
+version = "0.2.0"
 description = "Python SDK and bot template for the Loaf trading platform API"
 readme = "README.md"
 requires-python = ">=3.9"

@@ -23,13 +23,14 @@ from .constants import (
     MAX_QUANTITY_DECIMALS,
 )
 from .enums import (
+    CandleResolution,
+    CompetitionRoundStatus,
     IpoStatus,
     OfferingOrderStatus,
     OrderSide,
     OrderStatus,
     OrderType,
     PropertyStatus,
-    PropertyType,
     TimeInForce,
     TradeStatus,
     TransferStatus,
@@ -52,7 +53,7 @@ from .exceptions import (
     LoafServerError,
     LoafServiceUnavailableError,
     LoafValidationError,
-    ReferralRequiredError,
+    TradingHaltedError,
 )
 from .money import bps_to_fraction, fraction_to_bps
 from .ws import LoafWebSocketClient
@@ -76,10 +77,11 @@ __all__ = [
     "TradeStatus",
     "OfferingOrderStatus",
     "PropertyStatus",
-    "PropertyType",
     "IpoStatus",
     "TransferType",
     "TransferStatus",
+    "CandleResolution",
+    "CompetitionRoundStatus",
     "WSMessageType",
     # unit helpers
     "bps_to_fraction",
@@ -92,7 +94,7 @@ __all__ = [
     "LoafAuthError",
     "LoafForbiddenError",
     "KycRequiredError",
-    "ReferralRequiredError",
+    "TradingHaltedError",
     "CompetitionEligibilityError",
     "LoafValidationError",
     "LoafNotFoundError",

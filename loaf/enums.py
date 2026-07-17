@@ -90,15 +90,26 @@ class TransferStatus(_StrEnum):
     REJECTED = "REJECTED"
 
 
-class PropertyType(_StrEnum):
-    HOUSE = "HOUSE"
-    APARTMENT = "APARTMENT"
-    DUPLEX = "DUPLEX"
-    TERRACE = "TERRACE"
-    TOWNHOUSE = "TOWNHOUSE"
-    VILLA = "VILLA"
-    RETIRE = "RETIRE"
-    LANDMARK = "LANDMARK"
+class CandleResolution(_StrEnum):
+    """Bucket size for :meth:`loaf.resources.market.MarketResource.candles`."""
+
+    ONE_MINUTE = "1m"
+    FIVE_MINUTES = "5m"
+    FIFTEEN_MINUTES = "15m"
+    ONE_HOUR = "1h"
+    FOUR_HOURS = "4h"
+    ONE_DAY = "1d"
+    ONE_WEEK = "1w"
+
+
+class CompetitionRoundStatus(_StrEnum):
+    """Lifecycle of a trading-competition round (leaderboard / competition info)."""
+
+    DRAFT = "DRAFT"
+    PENDING = "PENDING"
+    PREPARED = "PREPARED"
+    ACTIVE = "ACTIVE"
+    ENDED = "ENDED"
 
 
 class WSMessageType(_StrEnum):
@@ -119,11 +130,14 @@ class WSMessageType(_StrEnum):
     CANDLE_UPDATE = "candle_update"
     MARK_PRICE = "mark_price"
     IPO_ALLOCATION_UPDATE = "ipo_allocation_update"
+    VOLUME_UPDATE = "volume_update"
+    LEADERBOARD_UPDATE = "leaderboard_update"
     # private portfolio deltas
     BALANCES_UPDATE = "balances_update"
     POSITION_UPDATE = "position_update"
     ORDER_STATUS = "order_status"
     ORDER_UPDATE = "order_update"
     TRADE_NEW = "trade_new"
+    LIFETIME_VOLUME_UPDATE = "lifetime_volume_update"
     TRANSFER_UPDATE = "transfer_update"
     OFFERING_ORDER_UPDATE = "offering_order_update"
