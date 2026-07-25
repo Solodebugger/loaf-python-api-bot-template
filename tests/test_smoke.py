@@ -130,12 +130,12 @@ def test_order_create_flow():
         return httpx.Response(404, json={"error": "nope"})
 
     client = make_client(handler)
-    res = client.orders.limit_buy(42, quantity=10, price=167.49)
+    res = client.orders.limit_buy("opera", quantity=10, price=167.49)
     assert res.orderId == 99
     body = captured["body"]
     # Sent as plain human units, correct enum strings, auto-fetched nonce.
     assert body == {
-        "propertyId": 42,
+        "tokenName": "opera",
         "price": 167.49,
         "quantity": 10,
         "side": "BUY",
@@ -156,7 +156,7 @@ def test_market_order_forces_zero_price():
         return httpx.Response(200, json={"success": True, "orderId": 1})
 
     client = make_client(handler)
-    client.orders.market_sell(7, quantity=2.5)
+    client.orders.market_sell("opera", quantity=2.5)
     assert captured["body"]["type"] == "MARKET"
     assert captured["body"]["price"] == 0
 
@@ -164,9 +164,9 @@ def test_market_order_forces_zero_price():
 def test_order_validation_local():
     client = make_client(lambda r: httpx.Response(200, json={}))
     with pytest.raises(loaf.LoafValidationError):
-        client.orders.limit_buy(1, quantity=1, price=1.234)  # too many price dp
+        client.orders.limit_buy("opera", quantity=1, price=1.234)  # too many price dp
     with pytest.raises(loaf.LoafValidationError):
-        client.orders.create(1, "BUY", quantity=1, type="LIMIT")  # missing price
+        client.orders.create("opera", "BUY", quantity=1, type="LIMIT")  # missing price
 
 
 def test_active_orders_passthrough():
@@ -255,13 +255,13 @@ def test_candles_params_and_no_auth():
         )
 
     client = make_client(handler)
-    res = client.market.candles("123main", "1h", count_back=24)
-    assert seen["path"].endswith("/trade/123main/candles")
+    res = client.market.candles("opera", "1h", count_back=24)
+    assert seen["path"].endswith("/trade/opera/candles")
     assert seen["params"] == {"resolution": "1h", "countBack": "24"}  # `to` omitted
     assert seen["auth"] is None  # public endpoint
     assert res.hasMore is False
 
-    client.market.candles("123main", loaf.CandleResolution.ONE_DAY, to=1_700_000_000)
+    client.market.candles("opera", loaf.CandleResolution.ONE_DAY, to=1_700_000_000)
     assert seen["params"] == {"resolution": "1d", "to": "1700000000"}
 
 
@@ -312,9 +312,9 @@ def test_competition_endpoints():
 
 def test_ws_new_channel_helpers():
     ws = loaf.LoafWebSocketClient(ws_url="ws://test/ws")
-    ws.subscribe_volume(7)
+    ws.subscribe_volume("opera")
     ws.subscribe_leaderboard()
-    assert ws._channels == {"volume:7", "leaderboard"}
+    assert ws._channels == {"volume:opera", "leaderboard"}
 
 
 def test_rate_limit_headers_recorded():

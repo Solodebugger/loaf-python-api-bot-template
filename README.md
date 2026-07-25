@@ -12,7 +12,7 @@ loaf = LoafClient(api_key="your-api-key")          # or set $LOAF_API_KEY
 
 print(loaf.portfolio.component().cash)             # available USDL
 print(loaf.market.properties())                    # what's tradeable
-loaf.orders.limit_buy(1, quantity=10, price=167.49)  # trade (by propertyId)
+loaf.orders.limit_buy("opera", quantity=10, price=167.49)  # trade (by tokenName)
 ```
 
 ---
@@ -103,7 +103,7 @@ orders.nonce()                        POST   /orders/nonce
 orders.create(...) / limit_buy / ...  POST   /orders
 orders.cancel(order_id)               POST   /orders/cancel
 orders.cancel_all()                   POST   /orders/cancel-all
-orders.approve(property_id)           POST   /orders/approve
+orders.approve(token_name)            POST   /orders/approve
 
 portfolio.get() / component()         GET    /portfolio, /portfolio/component
 
@@ -123,9 +123,9 @@ Candle history is a dedicated, paginated endpoint (the property detail response
 no longer inlines it):
 
 ```python
-h = loaf.market.candles("123main", "1h", count_back=200)   # 1m|5m|15m|1h|4h|1d|1w
+h = loaf.market.candles("opera", "1h", count_back=200)   # 1m|5m|15m|1h|4h|1d|1w
 print(h.candles[-1])                  # latest {time, open, high, low, close, volume}
-older = loaf.market.candles("123main", "1h", to=h.oldestTs)  # page back while h.hasMore
+older = loaf.market.candles("opera", "1h", to=h.oldestTs)  # page back while h.hasMore
 ```
 
 ---
@@ -135,15 +135,14 @@ older = loaf.market.candles("123main", "1h", to=h.oldestTs)  # page back while h
 Orders use a two-step nonce protocol; the SDK handles it for you:
 
 ```python
-# Resolve a tokenName -> numeric propertyId (orders are keyed by id):
-prop = next(p for p in loaf.market.properties()["properties"] if p.tokenName == "123main")
+# Orders are addressed by tokenName (list the tradeable ones via loaf.market.properties()):
 
 # LIMIT order (price in dollars, <=2 dp; quantity in tokens, <=1 dp):
-res = loaf.orders.limit_buy(prop.propertyId, quantity=10, price=167.49)
+res = loaf.orders.limit_buy("opera", quantity=10, price=167.49)
 print(res.orderId)            # accepted into the book (NOT necessarily filled)
 
 # MARKET order (price is forced to 0, slippage-bounded server-side):
-loaf.orders.market_sell(prop.propertyId, quantity=2.5)
+loaf.orders.market_sell("opera", quantity=2.5)
 
 loaf.orders.cancel(res.orderId)
 loaf.orders.cancel_all()      # flatten everything
@@ -189,8 +188,8 @@ def on_book(msg):
 def on_fill(msg):
     print("filled", msg.trade.side, msg.trade.quantity, "@", msg.trade.price)
 
-ws.subscribe_orderbook(42)
-ws.subscribe_trades(42)
+ws.subscribe_orderbook("opera")
+ws.subscribe_trades("opera")
 ws.subscribe_portfolio(user_id=3)   # your private stream (your numeric Loaf user id)
 
 ws.run_forever()                # blocking; or `with loaf.websocket() as ws:` for background
@@ -200,11 +199,11 @@ Channels:
 
 | Channel | Auth | Handler | Payload |
 | --- | --- | --- | --- |
-| `orderbook:{propertyId}` | public | `on_orderbook` | full bid/ask snapshot (~500ms) |
-| `trades:{propertyId}` | public | `on_trades` | rolling recent-trades batch |
-| `chart:{propertyId}` | public | `on_candle` | OHLCV candle updates |
-| `markprice:{propertyId}` | public | `on_mark_price` | canonical mark price (1s, on change) |
-| `volume:{propertyId}` | public | `on_volume` | session volume (replaces `volume24h`) |
+| `orderbook:{tokenName}` | public | `on_orderbook` | full bid/ask snapshot (~500ms) |
+| `trades:{tokenName}` | public | `on_trades` | rolling recent-trades batch |
+| `chart:{tokenName}` | public | `on_candle` | OHLCV candle updates |
+| `markprice:{tokenName}` | public | `on_mark_price` | canonical mark price (1s, on change) |
+| `volume:{tokenName}` | public | `on_volume` | session volume (replaces `volume24h`) |
 | `ipo:{ipoId}` | public | `on_ipo` | primary-market allocation progress |
 | `leaderboard` | public | `on_leaderboard` | full competition leaderboard, on change |
 | `portfolio:{userId}` | **private** | `on_balances`, `on_position`, `on_order_status`, `on_order_update`, `on_trade`, `on_lifetime_volume`, `on_transfer`, `on_offering_order` | your account deltas |
@@ -226,7 +225,7 @@ Every failure maps to a specific exception (all subclass `LoafError`):
 import loaf, time
 
 try:
-    loaf.orders.limit_buy(prop_id, quantity=1, price=167.49)
+    loaf.orders.limit_buy("opera", quantity=1, price=167.49)
 except loaf.CompetitionEligibilityError:
     ...   # not admitted to the active competition round
 except loaf.TradingHaltedError:
@@ -285,7 +284,7 @@ pagination, error mapping, and retry behaviour.
 - This SDK is the **trading-facing** surface. Account management, KYC, referrals
   (`/auth/*`), property valuations (`/valuations/*`), the featured-offering
   home feed (`/home`), fiat on/off-ramps (`/portfolio/onramp|offramp`), and the
-  shareable image cards (`/portfolio/position/{id}/pnl-card`,
+  shareable image cards (`/portfolio/position/{tokenName}/pnl-card`,
   `/leaderboard/card`, `/competition/queue-position/card`) are **not** wrapped —
   do those in the Loaf web app.
 - Create your API key and find your numeric user id (for the private WebSocket

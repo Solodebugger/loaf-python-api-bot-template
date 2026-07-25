@@ -41,7 +41,7 @@ def main() -> None:
 
     try:
         # create() fetches a nonce for you automatically.
-        result = client.orders.limit_buy(prop.propertyId, quantity=1, price=price)
+        result = client.orders.limit_buy(prop.tokenName, quantity=1, price=price)
     except loaf.CompetitionEligibilityError:
         raise SystemExit(
             "Not admitted to the active competition round — check "

@@ -41,7 +41,7 @@ except ImportError:
     pass
 
 # The property this template watches/trades. Set to a tokenName from
-# `loaf.market.properties()` (lowercase letters), e.g. "123main".
+# `loaf.market.properties()` (lowercase letters), e.g. "opera".
 TARGET_TOKEN_NAME = os.environ.get("LOAF_TARGET_TOKEN", "")
 
 # Your numeric Loaf user id (find it in the Loaf web app). Only needed to
@@ -117,9 +117,8 @@ class Strategy:
     helpers you need are commented inline.
     """
 
-    def __init__(self, client: LoafClient, property_id: int, token_name: str) -> None:
+    def __init__(self, client: LoafClient, token_name: str) -> None:
         self.client = client
-        self.property_id = property_id
         self.token_name = token_name
         self._lock = threading.Lock()
         self.best_bid: float | None = None
@@ -170,10 +169,10 @@ class Strategy:
         #   # Place a limit buy 1% below the best bid:
         #   if bid:
         #       price = round(bid * 0.99, 2)
-        #       self.client.orders.limit_buy(self.property_id, quantity=1, price=price)
+        #       self.client.orders.limit_buy(self.token_name, quantity=1, price=price)
         #
         #   # Market sell 0.5 tokens:
-        #   self.client.orders.market_sell(self.property_id, quantity=0.5)
+        #   self.client.orders.market_sell(self.token_name, quantity=0.5)
         #
         #   # Flatten everything:
         #   self.client.orders.cancel_all()
@@ -201,7 +200,7 @@ def main() -> None:
         return
     print(f"\nFollowing property {target.tokenName} (id {target.propertyId}).\n")
 
-    strategy = Strategy(client, target.propertyId, target.tokenName)
+    strategy = Strategy(client, target.tokenName)
 
     # Wire up the real-time feed.
     ws = client.websocket()
@@ -213,9 +212,9 @@ def main() -> None:
     ws.on_balances(strategy.on_balances)      # private: your balance changes
     ws.on_error(lambda m: print(f"  WS error: {m.get('message')}"))
 
-    ws.subscribe_orderbook(target.propertyId)
-    ws.subscribe_mark_price(target.propertyId)
-    ws.subscribe_trades(target.propertyId)
+    ws.subscribe_orderbook(target.tokenName)
+    ws.subscribe_mark_price(target.tokenName)
+    ws.subscribe_trades(target.tokenName)
     if USER_ID:
         ws.subscribe_portfolio(int(USER_ID))  # your private fills/balances stream
     else:

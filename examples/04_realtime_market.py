@@ -43,9 +43,9 @@ def main() -> None:
     def on_mark(msg):
         print(f"MARK  {msg.price}")
 
-    ws.subscribe_orderbook(prop.propertyId)
-    ws.subscribe_trades(prop.propertyId)
-    ws.subscribe_mark_price(prop.propertyId)
+    ws.subscribe_orderbook(prop.tokenName)
+    ws.subscribe_trades(prop.tokenName)
+    ws.subscribe_mark_price(prop.tokenName)
 
     ws.run_forever()  # blocking until Ctrl-C
 

@@ -9,8 +9,8 @@ Typical usage::
     def handle_book(msg):
         print(msg.propertyId, msg.bids[0].price)
 
-    ws.subscribe_orderbook(42)
-    ws.subscribe_trades(42)
+    ws.subscribe_orderbook("opera")
+    ws.subscribe_trades("opera")
     ws.run_forever()            # blocking; Ctrl-C to stop
 
 Or run it in the background and keep using the REST client::
@@ -20,20 +20,21 @@ Or run it in the background and keep using the REST client::
         ws.subscribe_portfolio()          # uses your authenticated userId
         ...                               # do other work; handlers fire live
 
-Channels (``"type:id"`` strings; ``leaderboard`` has no id):
+Channels (``"type:key"`` strings — market-data channels key by ``tokenName``,
+``portfolio`` by your numeric userId; ``leaderboard`` has no key):
 
-==================  ========  ===========================================
-Channel             Auth      What you receive
-==================  ========  ===========================================
-orderbook:{id}      public    full bid/ask book snapshots
-trades:{id}         public    rolling recent-trades batches
-chart:{id}          public    OHLCV candle updates (note: singular "chart")
-markprice:{id}      public    canonical mark price (1s, on change)
-volume:{id}         public    session volume replacing ``volume24h``
-ipo:{id}            public    primary-market allocation progress
-leaderboard         public    full competition leaderboard on change
-portfolio:{userId}  PRIVATE   your balances/positions/orders/trades deltas
-==================  ========  ===========================================
+=====================  ========  ===========================================
+Channel                Auth      What you receive
+=====================  ========  ===========================================
+orderbook:{tokenName}  public    full bid/ask book snapshots
+trades:{tokenName}     public    rolling recent-trades batches
+chart:{tokenName}      public    OHLCV candle updates (note: singular "chart")
+markprice:{tokenName}  public    canonical mark price (1s, on change)
+volume:{tokenName}     public    session volume replacing ``volume24h``
+ipo:{ipoId}            public    primary-market allocation progress
+leaderboard            public    full competition leaderboard on change
+portfolio:{userId}     PRIVATE   your balances/positions/orders/trades deltas
+=====================  ========  ===========================================
 
 All values are already human units (dollars / tokens); timestamps are unix
 seconds. Handlers run on the client's internal event-loop thread.
@@ -226,23 +227,23 @@ class LoafWebSocketClient:
         self._send_now({"type": "unsubscribe", "channels": sorted(gone)})
         return self
 
-    def subscribe_orderbook(self, property_id: int) -> LoafWebSocketClient:
-        return self.subscribe(f"orderbook:{int(property_id)}")
+    def subscribe_orderbook(self, token_name: str) -> LoafWebSocketClient:
+        return self.subscribe(f"orderbook:{token_name}")
 
-    def subscribe_trades(self, property_id: int) -> LoafWebSocketClient:
-        return self.subscribe(f"trades:{int(property_id)}")
+    def subscribe_trades(self, token_name: str) -> LoafWebSocketClient:
+        return self.subscribe(f"trades:{token_name}")
 
-    def subscribe_chart(self, property_id: int) -> LoafWebSocketClient:
+    def subscribe_chart(self, token_name: str) -> LoafWebSocketClient:
         """Candlestick channel (note: the channel name is singular ``chart``)."""
-        return self.subscribe(f"chart:{int(property_id)}")
+        return self.subscribe(f"chart:{token_name}")
 
-    def subscribe_mark_price(self, property_id: int) -> LoafWebSocketClient:
-        return self.subscribe(f"markprice:{int(property_id)}")
+    def subscribe_mark_price(self, token_name: str) -> LoafWebSocketClient:
+        return self.subscribe(f"markprice:{token_name}")
 
-    def subscribe_volume(self, property_id: int) -> LoafWebSocketClient:
+    def subscribe_volume(self, token_name: str) -> LoafWebSocketClient:
         """Session-volume pushes for a property (seed from the REST
         ``volume24h``, then let ``volume_update`` frames replace it)."""
-        return self.subscribe(f"volume:{int(property_id)}")
+        return self.subscribe(f"volume:{token_name}")
 
     def subscribe_ipo(self, ipo_id: int) -> LoafWebSocketClient:
         return self.subscribe(f"ipo:{int(ipo_id)}")

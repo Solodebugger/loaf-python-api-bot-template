@@ -4,7 +4,7 @@ Placing an order is a two-step protocol — fetch a single-use ``nonce``, then
 submit the order with it. :meth:`OrdersResource.create` does both for you by
 default, so the common case is a one-liner::
 
-    loaf.orders.limit_buy("123main", quantity=10, price=167.49)
+    loaf.orders.limit_buy("opera", quantity=10, price=167.49)
 
 Order placement can be rejected with a 403 when:
 * a trading-competition round is ACTIVE and your account is not admitted
@@ -46,7 +46,7 @@ class OrdersResource(Resource):
 
     def create(
         self,
-        property_id: int,
+        token_name: str,
         side: str,
         quantity: float,
         *,
@@ -59,8 +59,9 @@ class OrdersResource(Resource):
         """``POST /orders`` — place a trading order.
 
         Args:
-            property_id: numeric property id (resolve from ``tokenName`` via
-                :meth:`loaf.resources.market.MarketResource.properties`).
+            token_name: the property's public ``tokenName`` (e.g. ``"opera"``);
+                list the tradeable ones via
+                :meth:`loaf.resources.market.MarketResource.properties`.
             side: ``BUY`` or ``SELL`` (:class:`~loaf.enums.OrderSide`).
             quantity: token quantity in human units, at most 1 decimal place.
             type: ``LIMIT`` (default) or ``MARKET`` (:class:`~loaf.enums.OrderType`).
@@ -107,7 +108,7 @@ class OrdersResource(Resource):
             nonce = self.nonce()["nonce"]
 
         body = {
-            "propertyId": int(property_id),
+            "tokenName": token_name,
             "price": price,
             "quantity": quantity,
             "side": side,
@@ -120,25 +121,25 @@ class OrdersResource(Resource):
 
     # -- Convenience wrappers --------------------------------------------- #
 
-    def limit_buy(self, property_id: int, quantity: float, price: float, **kwargs: Any) -> Any:
+    def limit_buy(self, token_name: str, quantity: float, price: float, **kwargs: Any) -> Any:
         """Place a LIMIT BUY. Extra kwargs forwarded to :meth:`create`."""
         return self.create(
-            property_id, OrderSide.BUY, quantity, type=OrderType.LIMIT, price=price, **kwargs
+            token_name, OrderSide.BUY, quantity, type=OrderType.LIMIT, price=price, **kwargs
         )
 
-    def limit_sell(self, property_id: int, quantity: float, price: float, **kwargs: Any) -> Any:
+    def limit_sell(self, token_name: str, quantity: float, price: float, **kwargs: Any) -> Any:
         """Place a LIMIT SELL. Extra kwargs forwarded to :meth:`create`."""
         return self.create(
-            property_id, OrderSide.SELL, quantity, type=OrderType.LIMIT, price=price, **kwargs
+            token_name, OrderSide.SELL, quantity, type=OrderType.LIMIT, price=price, **kwargs
         )
 
-    def market_buy(self, property_id: int, quantity: float, **kwargs: Any) -> Any:
+    def market_buy(self, token_name: str, quantity: float, **kwargs: Any) -> Any:
         """Place a MARKET BUY (slippage-bounded server-side)."""
-        return self.create(property_id, OrderSide.BUY, quantity, type=OrderType.MARKET, **kwargs)
+        return self.create(token_name, OrderSide.BUY, quantity, type=OrderType.MARKET, **kwargs)
 
-    def market_sell(self, property_id: int, quantity: float, **kwargs: Any) -> Any:
+    def market_sell(self, token_name: str, quantity: float, **kwargs: Any) -> Any:
         """Place a MARKET SELL (slippage-bounded server-side)."""
-        return self.create(property_id, OrderSide.SELL, quantity, type=OrderType.MARKET, **kwargs)
+        return self.create(token_name, OrderSide.SELL, quantity, type=OrderType.MARKET, **kwargs)
 
     # -- Cancel ------------------------------------------------------------ #
 
@@ -162,10 +163,10 @@ class OrdersResource(Resource):
 
     # -- Pre-approval (latency optimisation) ------------------------------- #
 
-    def approve(self, property_id: int) -> Any:
+    def approve(self, token_name: str) -> Any:
         """``POST /orders/approve`` — pre-grant ERC-20 allowances for a property.
 
         Idempotent. Optional: removes on-chain approval latency from your first
         BUY/SELL on a property. Orders also approve inline if you skip this.
         """
-        return self._client.post("/orders/approve", json={"propertyId": int(property_id)})
+        return self._client.post("/orders/approve", json={"tokenName": token_name})
