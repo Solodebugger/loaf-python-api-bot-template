@@ -1,21 +1,5 @@
 #!/usr/bin/env python3
-"""Loaf trading bot — template.
-
-A runnable starting point that:
-  1. loads your credentials from the environment (or a .env file),
-  2. verifies the connection and trading prerequisites,
-  3. prints your balances and positions,
-  4. opens the real-time feed (order book; plus your private portfolio
-     stream when LOAF_USER_ID is set),
-  5. runs a simple strategy loop you can replace with your own logic.
-
-Run it:
-    cp .env.example .env          # then edit .env to set LOAF_API_KEY etc.
-    pip install -e .              # or: pip install httpx websockets
-    python bot.py
-
-Stop with Ctrl-C.
-"""
+"""Loaf trading bot — Volume farming on deepwaterbay every 2 seconds (95% of balance)."""
 
 from __future__ import annotations
 
@@ -23,6 +7,7 @@ import os
 import signal
 import sys
 import threading
+import time
 from typing import Any
 
 import loaf
@@ -32,101 +17,54 @@ from loaf import LoafClient
 # Configuration
 # --------------------------------------------------------------------------- #
 
-# Optionally load a .env file (pip install python-dotenv). Harmless if absent.
 try:
     from dotenv import load_dotenv
-
     load_dotenv()
 except ImportError:
     pass
 
-# The property this template watches/trades. Set to a tokenName from
-# `loaf.market.properties()` (lowercase letters), e.g. "opera".
-TARGET_TOKEN_NAME = os.environ.get("LOAF_TARGET_TOKEN", "")
-
-# Your numeric Loaf user id (find it in the Loaf web app). Only needed to
-# subscribe to the PRIVATE portfolio WebSocket channel; leave unset to skip it.
+TARGET_TOKEN_NAME = "deepwaterbay"
 USER_ID = os.environ.get("LOAF_USER_ID", "")
 
 
 def build_client() -> LoafClient:
-    """Create a client from the environment, with friendly errors."""
     api_key = os.environ.get("LOAF_API_KEY")
     if not api_key:
-        sys.exit(
-            "No LOAF_API_KEY set.\n"
-            "  1. Log in to the Loaf web app and mint an API key "
-            "(Settings -> API keys).\n"
-            "  2. cp .env.example .env  and put the key in LOAF_API_KEY.\n"
-        )
-    # base_url / ws_url are read from $LOAF_API_BASE_URL / $LOAF_WS_URL if set.
+        sys.exit("No LOAF_API_KEY set.")
     return LoafClient(api_key=api_key)
 
 
 # --------------------------------------------------------------------------- #
-# Preflight checks
+# Preflight
 # --------------------------------------------------------------------------- #
 
-
 def preflight(client: LoafClient) -> None:
-    """Confirm credentials work and print balances/positions."""
     try:
         comp = client.portfolio.component()
     except loaf.LoafAuthError as exc:
         sys.exit(f"Authentication failed — check your API key. ({exc.message})")
 
-    print(f"  Cash: {comp.cash:,.2f} USDL  (frozen {comp.frozen:,.2f})  "
-          f"Portfolio value: {comp.portfolioValue:,.2f}  PnL: {comp.portfolioPnl:,.2f}")
-    positions = comp.get("positions") or []
-    if positions:
-        print("  Positions:")
-        for p in positions:
-            print(f"    {p.tokenName}: {p.quantity} @ avg {p.averageEntryPrice} "
-                  f"(mkt {p.marketPrice}, PnL {p.propertyPnl})")
-    print(
-        "  Note: while a competition round is ACTIVE, placing orders requires\n"
-        "        admission to the round (loaf.competition.queue_position() shows\n"
-        "        your standing). You'll get a clear error if not eligible."
-    )
-
-
-def resolve_target(client: LoafClient) -> Any:
-    """Pick the property to follow: the configured one, or the first listed (or None)."""
-    listing = client.market.properties().get("properties") or []
-    if not listing:
-        print("No properties available on this environment.")
-        return None
-    if TARGET_TOKEN_NAME:
-        for prop in listing:
-            if prop.tokenName == TARGET_TOKEN_NAME:
-                return prop
-        print(f"Token {TARGET_TOKEN_NAME!r} not found; falling back to first listed.")
-    return listing[0]
+    print(f"  Cash: {comp.cash:,.2f} USDL  (frozen {comp.frozen:,.2f})")
+    print(f"  Portfolio value: {comp.portfolioValue:,.2f}  PnL: {comp.portfolioPnl:,.2f}")
 
 
 # --------------------------------------------------------------------------- #
-# Strategy
+# Strategy – Buy 95% → Sell immediately, every 2 seconds
 # --------------------------------------------------------------------------- #
-
 
 class Strategy:
-    """Holds live state fed by the WebSocket, and decides what to do.
-
-    This template only OBSERVES the market (it prints a snapshot each tick and
-    never sends an order). Replace `on_tick` with your own logic — the order
-    helpers you need are commented inline.
-    """
-
     def __init__(self, client: LoafClient, token_name: str) -> None:
         self.client = client
         self.token_name = token_name
         self._lock = threading.Lock()
-        self.best_bid: float | None = None
-        self.best_ask: float | None = None
-        self.mark_price: float | None = None
-        self.last_trade: dict | None = None
+        self.best_bid = None
+        self.best_ask = None
+        self.mark_price = None
 
-    # -- WebSocket handlers (called on the WS thread) --------------------- #
+        self.last_action_time = 0
+        self.interval = 2.0                 # every 2 seconds
+        self.consecutive_fails = 0
+        self.success_count = 0
 
     def on_orderbook(self, msg) -> None:
         with self._lock:
@@ -138,91 +76,96 @@ class Strategy:
             self.mark_price = msg.price
 
     def on_trade_tick(self, msg) -> None:
-        trades = msg.get("trades") or []
-        if trades:
-            with self._lock:
-                self.last_trade = trades[0]
+        pass
 
     def on_my_fill(self, msg) -> None:
-        # A fill on YOUR orders (private portfolio channel).
         t = msg.trade
-        print(f"  *** FILLED: {t.side} {t.quantity} {t.tokenName} @ {t.price} "
-              f"(fee {t.fee})")
+        print(f"  *** FILLED: {t.side} {t.quantity} {t.tokenName} @ {t.price}")
 
     def on_my_order(self, msg) -> None:
-        print(f"  order #{msg.orderId} -> {msg.status} (left {msg.get('quantityLeft')})")
+        print(f"  order #{msg.orderId} → {msg.status}")
 
     def on_balances(self, msg) -> None:
-        print(f"  balance update: cash {msg.cash:,.2f}  frozen {msg.frozen:,.2f}")
-
-    # -- Decision loop (called on the main thread every few seconds) ------ #
+        print(f"  balance update: cash {msg.cash:,.2f}")
 
     def on_tick(self) -> None:
-        with self._lock:
-            bid, ask, mark = self.best_bid, self.best_ask, self.mark_price
-        spread = (ask - bid) if (bid is not None and ask is not None) else None
-        print(f"[{self.token_name}] bid={bid} ask={ask} spread={spread} mark={mark}")
+        now = time.time()
+        if now - self.last_action_time < self.interval:
+            return
+        self.last_action_time = now
 
-        # ----------------------------------------------------------------- #
-        # YOUR STRATEGY GOES HERE. Examples (uncomment & adapt):
-        #
-        #   # Place a limit buy 1% below the best bid:
-        #   if bid:
-        #       price = round(bid * 0.99, 2)
-        #       self.client.orders.limit_buy(self.token_name, quantity=1, price=price)
-        #
-        #   # Market sell 0.5 tokens:
-        #   self.client.orders.market_sell(self.token_name, quantity=0.5)
-        #
-        #   # Flatten everything:
-        #   self.client.orders.cancel_all()
-        #
-        # During an ACTIVE competition round, order placement requires admission
-        # (loaf.CompetitionEligibilityError otherwise; loaf.TradingHaltedError
-        # while a platform-wide halt is on).
-        # Wrap calls in try/except loaf.LoafAPIError to handle rejections.
-        # ----------------------------------------------------------------- #
+        try:
+            # 1. Get cash
+            portfolio = self.client.portfolio.component()
+            cash = float(getattr(portfolio, "cash", 0) or 0)
+
+            if cash < 5:
+                print(f"[{self.token_name}] Low cash: {cash:.2f}")
+                self.consecutive_fails += 1
+                return
+
+            # 2. Get price
+            with self._lock:
+                price = self.mark_price or self.best_ask or self.best_bid or 100.0
+
+            buy_value = cash * 0.95          # ← 95% of balance
+            quantity = round(buy_value / price, 1)
+
+            if quantity < 0.1:
+                print(f"[{self.token_name}] Quantity too small")
+                self.consecutive_fails += 1
+                return
+
+            print(f"\n[{self.token_name}] BUY {quantity} (~${buy_value:.2f}) @ ~{price}")
+
+            # 3. Market BUY
+            self.client.orders.market_buy(self.token_name, quantity=quantity)
+            time.sleep(0.6)
+
+            # 4. Market SELL
+            self.client.orders.market_sell(self.token_name, quantity=quantity)
+
+            self.success_count += 1
+            self.consecutive_fails = 0
+            print(f"[{self.token_name}] SELL done | Successful cycles: {self.success_count}")
+
+        except Exception as e:
+            print(f"[{self.token_name}] ERROR: {e}")
+            self.consecutive_fails += 1
 
 
 # --------------------------------------------------------------------------- #
 # Main
 # --------------------------------------------------------------------------- #
 
-
 def main() -> None:
     client = build_client()
     print(f"Connecting to {client.base_url} ...")
     preflight(client)
 
-    target = resolve_target(client)
-    if target is None:
-        client.close()
-        return
-    print(f"\nFollowing property {target.tokenName} (id {target.propertyId}).\n")
+    print(f"\n=== Trading only: deepwaterbay every 2 seconds (95% balance) ===\n")
 
-    strategy = Strategy(client, target.tokenName)
+    strategy = Strategy(client, "deepwaterbay")
 
-    # Wire up the real-time feed.
+    # WebSocket
     ws = client.websocket()
     ws.on_orderbook(strategy.on_orderbook)
     ws.on_mark_price(strategy.on_mark_price)
     ws.on_trades(strategy.on_trade_tick)
-    ws.on_trade(strategy.on_my_fill)          # private: your fills
-    ws.on_order_status(strategy.on_my_order)  # private: your order transitions
-    ws.on_balances(strategy.on_balances)      # private: your balance changes
+    ws.on_trade(strategy.on_my_fill)
+    ws.on_order_status(strategy.on_my_order)
+    ws.on_balances(strategy.on_balances)
     ws.on_error(lambda m: print(f"  WS error: {m.get('message')}"))
 
-    ws.subscribe_orderbook(target.tokenName)
-    ws.subscribe_mark_price(target.tokenName)
-    ws.subscribe_trades(target.tokenName)
+    ws.subscribe_orderbook("deepwaterbay")
+    ws.subscribe_mark_price("deepwaterbay")
+    ws.subscribe_trades("deepwaterbay")
     if USER_ID:
-        ws.subscribe_portfolio(int(USER_ID))  # your private fills/balances stream
-    else:
-        print("  (set LOAF_USER_ID to also stream your private portfolio events)")
+        ws.subscribe_portfolio(int(USER_ID))
 
-    ws.start()  # background thread
+    ws.start()
     ws.wait_until_connected(timeout=10)
-    print("Live feed connected. Press Ctrl-C to stop.\n")
+    print("Live feed connected. Starting volume farming...\n")
 
     stop = threading.Event()
     signal.signal(signal.SIGINT, lambda *_: stop.set())
@@ -230,7 +173,7 @@ def main() -> None:
     try:
         while not stop.is_set():
             strategy.on_tick()
-            stop.wait(5.0)  # tick every 5 seconds
+            stop.wait(0.5)
     finally:
         print("\nShutting down ...")
         ws.stop()
