@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Loaf trading bot — Volume farming on deepwaterbay every 2 seconds (95% of balance)."""
+"""Loaf trading bot — Volume farming on terafab every 2 seconds (95% of balance)."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ try:
 except ImportError:
     pass
 
-TARGET_TOKEN_NAME = "deepwaterbay"
+TARGET_TOKEN_NAME = "terafab"
 USER_ID = os.environ.get("LOAF_USER_ID", "")
 
 
@@ -143,9 +143,9 @@ def main() -> None:
     print(f"Connecting to {client.base_url} ...")
     preflight(client)
 
-    print(f"\n=== Trading only: deepwaterbay every 2 seconds (95% balance) ===\n")
+    print(f"\n=== Trading only: terafab every 2 seconds (95% balance) ===\n")
 
-    strategy = Strategy(client, "deepwaterbay")
+    strategy = Strategy(client, "terafab")
 
     # WebSocket
     ws = client.websocket()
@@ -157,9 +157,9 @@ def main() -> None:
     ws.on_balances(strategy.on_balances)
     ws.on_error(lambda m: print(f"  WS error: {m.get('message')}"))
 
-    ws.subscribe_orderbook("deepwaterbay")
-    ws.subscribe_mark_price("deepwaterbay")
-    ws.subscribe_trades("deepwaterbay")
+    ws.subscribe_orderbook("terafab")
+    ws.subscribe_mark_price("terafab")
+    ws.subscribe_trades("terafab")
     if USER_ID:
         ws.subscribe_portfolio(int(USER_ID))
 
