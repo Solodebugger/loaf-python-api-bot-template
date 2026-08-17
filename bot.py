@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Loaf trading bot — Volume farming on terafab every 3 seconds (safer sizing)."""
+"""Loaf trading bot — Volume farming on terafab every 3 seconds.
+Sells the *actual* held quantity after each buy so no residual position builds up.
+"""
 
 from __future__ import annotations
 
@@ -47,9 +49,32 @@ def preflight(client: LoafClient) -> None:
     print(f"  Cash: {comp.cash:,.2f} USDL  (frozen {comp.frozen:,.2f})")
     print(f"  Portfolio value: {comp.portfolioValue:,.2f}  PnL: {comp.portfolioPnl:,.2f}")
 
+    positions = comp.get("positions") or []
+    if positions:
+        print("  Current positions:")
+        for p in positions:
+            print(f"    {p.tokenName}: {p.quantity}")
+
 
 # --------------------------------------------------------------------------- #
-# Strategy – Buy ~80% of available → Sell immediately, every 3 seconds
+# Helpers
+# --------------------------------------------------------------------------- #
+
+def get_position_qty(client: LoafClient, token_name: str) -> float:
+    """Return the current quantity held of the given token (0 if none)."""
+    try:
+        comp = client.portfolio.component()
+        positions = comp.get("positions") or []
+        for p in positions:
+            if getattr(p, "tokenName", None) == token_name:
+                return float(getattr(p, "quantity", 0) or 0)
+    except Exception:
+        pass
+    return 0.0
+
+
+# --------------------------------------------------------------------------- #
+# Strategy
 # --------------------------------------------------------------------------- #
 
 class Strategy:
@@ -80,7 +105,9 @@ class Strategy:
 
     def on_my_fill(self, msg) -> None:
         t = msg.trade
-        print(f"  *** FILLED: {t.side} {t.quantity} {t.tokenName} @ {t.price}")
+        fee = getattr(t, "fee", None)
+        fee_str = f" (fee {fee})" if fee is not None else ""
+        print(f"  *** FILLED: {t.side} {t.quantity} {t.tokenName} @ {t.price}{fee_str}")
 
     def on_my_order(self, msg) -> None:
         print(f"  order #{msg.orderId} → {msg.status}")
@@ -95,7 +122,7 @@ class Strategy:
         self.last_action_time = now
 
         try:
-            # 1. Get fresh portfolio and compute truly available cash
+            # 1. Fresh available cash
             portfolio = self.client.portfolio.component()
             cash = float(getattr(portfolio, "cash", 0) or 0)
             frozen = float(getattr(portfolio, "frozen", 0) or 0)
@@ -107,17 +134,15 @@ class Strategy:
                 return
 
             # 2. Conservative sizing
-            FRACTION = 0.80                 # 80 % instead of 95 %
-            MAX_NOTIONAL = 2000.0           # optional hard safety cap
+            FRACTION = 0.80
+            MAX_NOTIONAL = 2000.0
             buy_value = min(available * FRACTION, MAX_NOTIONAL)
 
-            # 3. Price with small buffer against slippage
             with self._lock:
                 price = self.best_ask or self.mark_price or self.best_bid or 100.0
-            price *= 1.002                  # 0.2 % buffer
+            price *= 1.002  # small buffer against slippage
 
             quantity = round(buy_value / price, 1)
-
             if quantity < 0.1:
                 print(f"[{self.token_name}] Quantity too small")
                 self.consecutive_fails += 1
@@ -125,12 +150,21 @@ class Strategy:
 
             print(f"\n[{self.token_name}] BUY {quantity} (~${buy_value:.2f}) @ ~{price:.2f}")
 
-            # 4. Market BUY
+            # 3. Market BUY
             self.client.orders.market_buy(self.token_name, quantity=quantity)
-            time.sleep(0.8)                 # slightly longer settle time
+            time.sleep(1.0)  # give the fill + position update time to land
 
-            # 5. Market SELL
-            self.client.orders.market_sell(self.token_name, quantity=quantity)
+            # 4. Sell the *actual* position we now hold (this is the key fix)
+            actual_qty = get_position_qty(self.client, self.token_name)
+            actual_qty = round(actual_qty, 1)  # respect exchange precision
+
+            if actual_qty < 0.1:
+                print(f"[{self.token_name}] No position to sell after buy (actual={actual_qty})")
+                self.consecutive_fails += 1
+                return
+
+            print(f"[{self.token_name}] SELL actual held qty: {actual_qty}")
+            self.client.orders.market_sell(self.token_name, quantity=actual_qty)
 
             self.success_count += 1
             self.consecutive_fails = 0
@@ -150,11 +184,10 @@ def main() -> None:
     print(f"Connecting to {client.base_url} ...")
     preflight(client)
 
-    print(f"\n=== Trading only: terafab every 3 seconds (80% available balance) ===\n")
+    print(f"\n=== Trading only: terafab every 3 seconds (sell actual position) ===\n")
 
     strategy = Strategy(client, "terafab")
 
-    # WebSocket
     ws = client.websocket()
     ws.on_orderbook(strategy.on_orderbook)
     ws.on_mark_price(strategy.on_mark_price)
