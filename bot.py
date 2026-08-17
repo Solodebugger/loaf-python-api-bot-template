@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Loaf trading bot — Volume farming on terafab every 2 seconds (95% of balance)."""
+"""Loaf trading bot — Volume farming on terafab every 3 seconds (safer sizing)."""
 
 from __future__ import annotations
 
@@ -49,7 +49,7 @@ def preflight(client: LoafClient) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# Strategy – Buy 95% → Sell immediately, every 2 seconds
+# Strategy – Buy ~80% of available → Sell immediately, every 3 seconds
 # --------------------------------------------------------------------------- #
 
 class Strategy:
@@ -62,7 +62,7 @@ class Strategy:
         self.mark_price = None
 
         self.last_action_time = 0
-        self.interval = 2.0                 # every 2 seconds
+        self.interval = 3.0                 # every 3 seconds
         self.consecutive_fails = 0
         self.success_count = 0
 
@@ -95,20 +95,27 @@ class Strategy:
         self.last_action_time = now
 
         try:
-            # 1. Get cash
+            # 1. Get fresh portfolio and compute truly available cash
             portfolio = self.client.portfolio.component()
             cash = float(getattr(portfolio, "cash", 0) or 0)
+            frozen = float(getattr(portfolio, "frozen", 0) or 0)
+            available = max(0.0, cash - frozen)
 
-            if cash < 5:
-                print(f"[{self.token_name}] Low cash: {cash:.2f}")
+            if available < 10:
+                print(f"[{self.token_name}] Low available cash: {available:.2f}")
                 self.consecutive_fails += 1
                 return
 
-            # 2. Get price
-            with self._lock:
-                price = self.mark_price or self.best_ask or self.best_bid or 100.0
+            # 2. Conservative sizing
+            FRACTION = 0.80                 # 80 % instead of 95 %
+            MAX_NOTIONAL = 2000.0           # optional hard safety cap
+            buy_value = min(available * FRACTION, MAX_NOTIONAL)
 
-            buy_value = cash * 0.95          # ← 95% of balance
+            # 3. Price with small buffer against slippage
+            with self._lock:
+                price = self.best_ask or self.mark_price or self.best_bid or 100.0
+            price *= 1.002                  # 0.2 % buffer
+
             quantity = round(buy_value / price, 1)
 
             if quantity < 0.1:
@@ -116,13 +123,13 @@ class Strategy:
                 self.consecutive_fails += 1
                 return
 
-            print(f"\n[{self.token_name}] BUY {quantity} (~${buy_value:.2f}) @ ~{price}")
+            print(f"\n[{self.token_name}] BUY {quantity} (~${buy_value:.2f}) @ ~{price:.2f}")
 
-            # 3. Market BUY
+            # 4. Market BUY
             self.client.orders.market_buy(self.token_name, quantity=quantity)
-            time.sleep(0.6)
+            time.sleep(0.8)                 # slightly longer settle time
 
-            # 4. Market SELL
+            # 5. Market SELL
             self.client.orders.market_sell(self.token_name, quantity=quantity)
 
             self.success_count += 1
@@ -143,7 +150,7 @@ def main() -> None:
     print(f"Connecting to {client.base_url} ...")
     preflight(client)
 
-    print(f"\n=== Trading only: terafab every 2 seconds (95% balance) ===\n")
+    print(f"\n=== Trading only: terafab every 3 seconds (80% available balance) ===\n")
 
     strategy = Strategy(client, "terafab")
 
